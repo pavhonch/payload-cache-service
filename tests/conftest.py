@@ -1,19 +1,23 @@
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from pydantic import SecretStr
 from sqlalchemy import delete
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from payload_cache.app import create_app
 from payload_cache.config import Settings
 from payload_cache.database import build_engine, build_session_factory
-from payload_cache.models import Transformation
+from payload_cache.models import RequestPayload, Transformation
+from tests.helpers import CountingTransformer
 
 
 @pytest.fixture
@@ -60,6 +64,7 @@ def cache_sessions(cache_settings: Settings, cache_version: str) -> Iterator[ses
     finally:
         try:
             with engine.begin() as connection:
+                connection.execute(delete(RequestPayload))
                 connection.execute(
                     delete(Transformation).where(
                         Transformation.transformer_version.in_(
@@ -69,3 +74,41 @@ def cache_sessions(cache_settings: Settings, cache_version: str) -> Iterator[ses
                 )
         finally:
             engine.dispose()
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.fixture
+def api_transformer(cache_version: str) -> CountingTransformer:
+    return CountingTransformer(cache_version)
+
+
+@pytest.fixture
+def payload_directory(tmp_path: Path) -> Path:
+    return tmp_path / "payloads"
+
+
+@pytest.fixture
+def api_app(
+    cache_settings: Settings,
+    cache_sessions: sessionmaker[Session],
+    api_transformer: CountingTransformer,
+    payload_directory: Path,
+) -> FastAPI:
+    settings = cache_settings.model_copy(update={"data_dir": payload_directory})
+    return create_app(settings, api_transformer)
+
+
+@pytest.fixture
+async def api_client(api_app: FastAPI, anyio_backend: str) -> AsyncIterator[httpx.AsyncClient]:
+    async with (
+        api_app.router.lifespan_context(api_app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api_app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as client,
+    ):
+        yield client

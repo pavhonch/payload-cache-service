@@ -81,10 +81,14 @@ holds a connection and transaction while it runs.
 
 ## Files
 
-Payloads live at `<data_dir>/<id>.json`. Publish a complete temporary file from
-the same filesystem before committing the request index. Use atomic replacement
-and synchronize file data; the Linux deployment also synchronizes the directory.
-Concurrent publishers of identical content produce the same complete file.
+Payloads live at `<data_dir>/<id>.json`. Write and synchronize a complete temporary
+file on the same filesystem before publishing it with a hard link. An existing
+payload is verified and reused rather than replaced. This requires a filesystem
+with hard-link support, such as NTFS or ext4.
+
+The Linux deployment also synchronizes the directory before committing the request
+index, including when reusing a concurrent publisher's file. Concurrent publishers
+of identical content produce the same complete file.
 
 A crash between publication and indexing leaves a valid reusable file. A repeated
 POST repairs a missing file from its input and cached transformations. GET cannot

@@ -9,10 +9,14 @@ def build_engine(settings: Settings) -> Engine:
         settings.database_url.get_secret_value(),
         isolation_level="READ COMMITTED",
         pool_pre_ping=True,
+        hide_parameters=True,
         pool_size=settings.pool_size,
         max_overflow=0,
         pool_timeout=settings.pool_timeout_seconds,
-        connect_args={"connect_timeout": 5},
+        connect_args={
+            "connect_timeout": 5,
+            "options": f"-c lock_timeout={settings.lock_timeout_ms}",
+        },
     )
 
 

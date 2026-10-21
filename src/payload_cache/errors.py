@@ -16,3 +16,15 @@ class InvalidTransformation(Exception):
 
 class PayloadTooLarge(Exception):
     pass
+
+
+class PayloadNotFound(Exception):
+    pass
+
+
+class StorageError(Exception):
+    pass
+
+
+class PayloadIntegrityError(StorageError):
+    pass

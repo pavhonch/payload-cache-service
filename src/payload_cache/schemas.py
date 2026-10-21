@@ -21,7 +21,9 @@ InputText = Annotated[
     Field(strict=True, max_length=MAX_STRING_CHARACTERS),
     AfterValidator(validate_unicode),
 ]
-PayloadId = Annotated[str, Field(strict=True, pattern=r"^[0-9a-f]{64}$")]
+PayloadId = Annotated[
+    str, Field(strict=True, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+]
 
 
 class Schema(BaseModel):
@@ -45,7 +47,7 @@ class PayloadConfirmation(Schema):
 
 
 class PayloadOutput(Schema):
-    output: str
+    output: Annotated[str, AfterValidator(validate_unicode)]
 
 
 class HealthResponse(Schema):
