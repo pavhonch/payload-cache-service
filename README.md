@@ -3,8 +3,40 @@
 A FastAPI service for generating JSON payload files with persistent transformation caching.
 PostgreSQL stores transformed strings and an index of previously processed requests.
 
-The API, persistent storage, and CLI client are implemented. The application
-container follows in the next checkpoint.
+The transformer uppercases strings. The service interleaves the two transformed
+lists, joins them with `, `, and stores the result as an immutable JSON file.
+
+## Run with Docker
+
+```sh
+docker compose up --build -d --wait
+```
+
+This starts PostgreSQL, runs Alembic migrations in a separate container, then starts the API at
+`http://localhost:8000`. Interactive API documentation is at `/docs`.
+The application runs as a non-root user. Named volumes preserve PostgreSQL data
+and payload files across container restarts and `docker compose down`.
+
+```sh
+docker compose logs app migrate
+docker compose down
+```
+
+The Compose credentials and localhost-only ports are for local evaluation. Set
+`CACHE_HTTP_PORT` or `CACHE_POSTGRES_PORT` when the default host ports (8000 and
+5433) are occupied. Compose uses its internal PostgreSQL address regardless of
+the database URL used for local Python development.
+
+The image contains the CLI too. This example needs only Docker:
+
+```sh
+docker compose exec app cache-cli -H http://127.0.0.1:8000 -j '{"list_1":["hello"],"list_2":["world"]}' -r 3
+```
+
+For an existing deployment, run migrations as a single release step before
+starting or scaling API workers. They are deliberately separate from the API
+startup. A custom payload volume must be writable by UID/GID `10001:10001` and
+shared by all workers.
 
 ## Development
 
@@ -134,3 +166,27 @@ writes, missing files, corrupt files, streamed request limits, and Unicode handl
 CLI tests cover argument validation, stdin and files, repeated POST/GET requests,
 response validation, atomic output, failures, and a complete run against the API
 with PostgreSQL.
+
+GitHub Actions runs formatting, lint, strict type checking, all tests against
+PostgreSQL, and a Docker build with a deployed API/CLI smoke check. To run the
+same smoke check locally against a running service:
+
+```sh
+uv run python scripts/smoke.py http://127.0.0.1:8000
+```
+
+## Scope and tradeoffs
+
+PostgreSQL is required; SQLite is not supported. Transaction advisory locks
+coordinate cache misses across workers, at the cost of holding a connection while
+the transformer runs. A future external transformer must implement its own I/O
+timeout and use a new version whenever its behavior changes.
+
+A crash after transformation but before commit can cause the external call to
+be repeated. Files and database rows cannot share one transaction: publish the
+file first, then index it, so an interrupted request can leave a reusable file.
+Repeated POST requests can reconstruct missing files from cached transformations.
+GET cannot recover a missing file from its hash alone.
+
+Authentication, cache eviction, and payload cleanup are outside this assessment.
+Backups must include both the database and payload volume.

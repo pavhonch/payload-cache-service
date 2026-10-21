@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 from collections.abc import Iterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -96,8 +97,9 @@ def test_invalid_payload_id_is_rejected(connection: Connection, payload_id: str)
         )
 
 
-def test_health_checks_live_database(database_settings: Settings) -> None:
-    app = create_app(database_settings)
+def test_health_checks_live_database(database_settings: Settings, tmp_path: Path) -> None:
+    settings = database_settings.model_copy(update={"data_dir": tmp_path / "payloads"})
+    app = create_app(settings)
 
     async def request_health() -> httpx.Response:
         async with (
