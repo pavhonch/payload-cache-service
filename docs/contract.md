@@ -118,3 +118,5 @@ Output files are replaced only after every iteration succeeds. Input and output
 must not be the same file. Stdout can contain successful earlier iterations when
 a later one fails. Exit codes: `0` success, `1` runtime/protocol/I/O error, `2`
 invalid arguments or input. HTTP responses are validated before use.
+The client follows no redirects and uses a 10-second network inactivity timeout.
+Responses are limited to 4 MiB, including streamed responses.

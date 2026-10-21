@@ -1,3 +1,10 @@
+x-application: &application
+  build: .
+  image: payload-cache-service:local
+  environment:
+    CACHE_DATABASE_URL: postgresql+psycopg://cache:cache@postgres:5432/cache
+    CACHE_DATA_DIR: /data/payloads
+
 services:
   postgres:
     image: postgres:17
@@ -6,7 +13,7 @@ services:
       POSTGRES_PASSWORD: cache
       POSTGRES_DB: cache
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${CACHE_POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,5 +22,27 @@ services:
       timeout: 3s
       retries: 20
 
+  migrate:
+    <<: *application
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  app:
+    <<: *application
+    ports:
+      - "127.0.0.1:${CACHE_HTTP_PORT:-8000}:8000"
+    volumes:
+      - payload_data:/data/payloads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   postgres_data:
+  payload_data:

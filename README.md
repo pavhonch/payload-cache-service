@@ -3,8 +3,40 @@
 A FastAPI service for generating JSON payload files with persistent transformation caching.
 PostgreSQL stores transformed strings and an index of previously processed requests.
 
-The API and persistent storage are implemented. The CLI client and application
-container follow in the next checkpoints.
+The transformer uppercases strings. The service interleaves the two transformed
+lists, joins them with `, `, and stores the result as an immutable JSON file.
+
+## Run with Docker
+
+```sh
+docker compose up --build -d --wait
+```
+
+This starts PostgreSQL, runs Alembic migrations in a separate container, then starts the API at
+`http://localhost:8000`. Interactive API documentation is at `/docs`.
+The application runs as a non-root user. Named volumes preserve PostgreSQL data
+and payload files across container restarts and `docker compose down`.
+
+```sh
+docker compose logs app migrate
+docker compose down
+```
+
+The Compose credentials and localhost-only ports are for local evaluation. Set
+`CACHE_HTTP_PORT` or `CACHE_POSTGRES_PORT` when the default host ports (8000 and
+5433) are occupied. Compose uses its internal PostgreSQL address regardless of
+the database URL used for local Python development.
+
+The image contains the CLI too. This example needs only Docker:
+
+```sh
+docker compose exec app cache-cli -H http://127.0.0.1:8000 -j '{"list_1":["hello"],"list_2":["world"]}' -r 3
+```
+
+For an existing deployment, run migrations as a single release step before
+starting or scaling API workers. They are deliberately separate from the API
+startup. A custom payload volume must be writable by UID/GID `10001:10001` and
+shared by all workers.
 
 ## Development
 
@@ -56,6 +88,43 @@ Every worker must use the same directory. The default location is `data/payloads
 Invalid input returns `422`, oversized input or output `413`, missing payloads
 `404`, and known dependency failures `503`. Unexpected failures return `500`.
 
+## CLI
+
+The CLI uses Pydantic Settings to parse and validate arguments. Each iteration
+creates a payload, reads it back, and writes one JSON line containing `id` and
+`output`. Use `-H` for the server; `-h` is reserved for help because the assignment
+uses that short option for both.
+
+```sh
+uv run cache-cli --help
+uv run cache-cli -H http://localhost:8000 -i examples/payload.json -r 3
+uv run cache-cli -i examples/payload.json -o results.jsonl
+```
+
+Inline JSON and stdin in a POSIX shell:
+
+```sh
+uv run cache-cli -j '{"list_1":["hello"],"list_2":["world"]}'
+cat examples/payload.json | uv run cache-cli -i -
+```
+
+PowerShell:
+
+```powershell
+Get-Content -Raw -Encoding utf8 examples/payload.json | uv run cache-cli -i -
+```
+
+Choose exactly one of `--input` and `--json`. Files accept UTF-8 with or without a
+BOM. Output defaults to stdout; diagnostics go to stderr. An output file is
+replaced only after all iterations succeed. It must differ from the input file.
+When writing to stdout, completed iterations remain visible if a later one fails.
+
+The host may include a base path, such as `https://example.com/cache`. Credentials,
+queries, and fragments are rejected. Requests have a 10-second network inactivity
+timeout and redirects are treated as errors. CLI options do not read environment
+variables or dotenv files. Exit codes are `0` for success, `1` for runtime errors,
+and `2` for invalid arguments or input.
+
 ## Checks
 
 ```sh
@@ -94,3 +163,30 @@ transformations remain cached when a later transformation fails.
 
 API and storage tests cover duplicate payloads, concurrent publication, interrupted
 writes, missing files, corrupt files, streamed request limits, and Unicode handling.
+CLI tests cover argument validation, stdin and files, repeated POST/GET requests,
+response validation, atomic output, failures, and a complete run against the API
+with PostgreSQL.
+
+GitHub Actions runs formatting, lint, strict type checking, all tests against
+PostgreSQL, and a Docker build with a deployed API/CLI smoke check. To run the
+same smoke check locally against a running service:
+
+```sh
+uv run python scripts/smoke.py http://127.0.0.1:8000
+```
+
+## Scope and tradeoffs
+
+PostgreSQL is required; SQLite is not supported. Transaction advisory locks
+coordinate cache misses across workers, at the cost of holding a connection while
+the transformer runs. A future external transformer must implement its own I/O
+timeout and use a new version whenever its behavior changes.
+
+A crash after transformation but before commit can cause the external call to
+be repeated. Files and database rows cannot share one transaction: publish the
+file first, then index it, so an interrupted request can leave a reusable file.
+Repeated POST requests can reconstruct missing files from cached transformations.
+GET cannot recover a missing file from its hash alone.
+
+Authentication, cache eviction, and payload cleanup are outside this assessment.
+Backups must include both the database and payload volume.
