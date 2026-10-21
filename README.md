@@ -3,9 +3,9 @@
 A FastAPI service for generating JSON payload files with persistent transformation caching.
 PostgreSQL stores transformed strings and an index of previously processed requests.
 
-The current checkpoint contains the project setup, input contract, database schema,
-migration, and database health endpoint. Payload endpoints and the CLI follow in the
-next checkpoints.
+The current checkpoint includes the transformation cache, database schema and migration,
+input contract, and database health endpoint. Payload endpoints and the CLI follow in
+the next checkpoints.
 
 ## Development
 
@@ -54,3 +54,7 @@ CACHE_TEST_DATABASE_URL=postgresql+psycopg://cache:cache@127.0.0.1:5433/cache_te
 ```
 
 The behavior and storage guarantees are described in [the service contract](docs/contract.md).
+
+Cache integration tests verify call counts, reuse across engine instances and processes,
+independent keys, lock timeouts, and a lost database connection before commit. Successful
+transformations remain cached when a later transformation fails.

@@ -43,8 +43,10 @@ cache source and result values use UTF-8 bytes in PostgreSQL `BYTEA` columns.
 
 ## Identity and caching
 
-The transformer is deterministic within its version. Cache entries use the exact
-input string and transformer version. Unique strings are looked up in batches;
+The transformer is deterministic within its version. Versions use 1-64 ASCII letters,
+digits, dots, hyphens, or underscores, starting with a letter or digit.
+Cache entries use the exact input string and transformer version.
+Unique strings are looked up in batches;
 only missing results require transformation.
 
 The request index hashes a canonical representation of the ordered lists, the
@@ -72,8 +74,10 @@ fails. No final payload is published until all transformations succeed.
 The coordinator prevents duplicate calls after successful persistence across
 processes sharing the database. A crash or lost database connection after an
 external call but before commit can cause a repeated call. Exactly-once external
-execution is not guaranteed. Locks, connections, and external calls have bounded
-waits; there is no automatic retry of a failed transformation.
+execution is not guaranteed. Lock and connection waits are bounded; there is no
+automatic retry of a failed transformation. The current transformer is local.
+A network-backed transformer must enforce its own I/O timeout; the coordinator
+holds a connection and transaction while it runs.
 
 ## Files
 
