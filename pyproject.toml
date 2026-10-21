@@ -19,6 +19,9 @@ dependencies = [
     "uvicorn>=0.34,<1",
 ]
 
+[project.scripts]
+cache-cli = "payload_cache.cli:main"
+
 [dependency-groups]
 dev = [
     "mypy>=1.15,<2",

@@ -3,8 +3,8 @@
 A FastAPI service for generating JSON payload files with persistent transformation caching.
 PostgreSQL stores transformed strings and an index of previously processed requests.
 
-The API and persistent storage are implemented. The CLI client and application
-container follow in the next checkpoints.
+The API, persistent storage, and CLI client are implemented. The application
+container follows in the next checkpoint.
 
 ## Development
 
@@ -56,6 +56,43 @@ Every worker must use the same directory. The default location is `data/payloads
 Invalid input returns `422`, oversized input or output `413`, missing payloads
 `404`, and known dependency failures `503`. Unexpected failures return `500`.
 
+## CLI
+
+The CLI uses Pydantic Settings to parse and validate arguments. Each iteration
+creates a payload, reads it back, and writes one JSON line containing `id` and
+`output`. Use `-H` for the server; `-h` is reserved for help because the assignment
+uses that short option for both.
+
+```sh
+uv run cache-cli --help
+uv run cache-cli -H http://localhost:8000 -i examples/payload.json -r 3
+uv run cache-cli -i examples/payload.json -o results.jsonl
+```
+
+Inline JSON and stdin in a POSIX shell:
+
+```sh
+uv run cache-cli -j '{"list_1":["hello"],"list_2":["world"]}'
+cat examples/payload.json | uv run cache-cli -i -
+```
+
+PowerShell:
+
+```powershell
+Get-Content -Raw -Encoding utf8 examples/payload.json | uv run cache-cli -i -
+```
+
+Choose exactly one of `--input` and `--json`. Files accept UTF-8 with or without a
+BOM. Output defaults to stdout; diagnostics go to stderr. An output file is
+replaced only after all iterations succeed. It must differ from the input file.
+When writing to stdout, completed iterations remain visible if a later one fails.
+
+The host may include a base path, such as `https://example.com/cache`. Credentials,
+queries, and fragments are rejected. Requests have a 10-second network inactivity
+timeout and redirects are treated as errors. CLI options do not read environment
+variables or dotenv files. Exit codes are `0` for success, `1` for runtime errors,
+and `2` for invalid arguments or input.
+
 ## Checks
 
 ```sh
@@ -94,3 +131,6 @@ transformations remain cached when a later transformation fails.
 
 API and storage tests cover duplicate payloads, concurrent publication, interrupted
 writes, missing files, corrupt files, streamed request limits, and Unicode handling.
+CLI tests cover argument validation, stdin and files, repeated POST/GET requests,
+response validation, atomic output, failures, and a complete run against the API
+with PostgreSQL.
