@@ -1,16 +1,12 @@
 import asyncio
 import hashlib
-import os
 from collections.abc import Iterator
-from pathlib import Path
 
 import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
-from pydantic import SecretStr
 from sqlalchemy import Connection, insert, select
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
 from payload_cache.app import create_app
@@ -19,24 +15,6 @@ from payload_cache.database import build_engine
 from payload_cache.models import RequestPayload, Transformation
 
 pytestmark = pytest.mark.integration
-
-
-def migration_config() -> Config:
-    return Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-
-
-@pytest.fixture
-def database_settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
-    raw_url = os.environ.get("CACHE_TEST_DATABASE_URL")
-    if raw_url is None:
-        pytest.skip("Set CACHE_TEST_DATABASE_URL to a dedicated PostgreSQL database")
-    database = make_url(raw_url).database
-    if not database or not database.endswith("_test"):
-        pytest.fail("The integration database name must end with _test")
-    monkeypatch.setenv("CACHE_DATABASE_URL", raw_url)
-    settings = Settings(database_url=SecretStr(raw_url))
-    command.upgrade(migration_config(), "head")
-    return settings
 
 
 @pytest.fixture
@@ -50,15 +28,16 @@ def connection(database_settings: Settings) -> Iterator[Connection]:
         engine.dispose()
 
 
-def test_models_match_migrated_schema(database_settings: Settings) -> None:
-    command.check(migration_config())
+def test_models_match_migrated_schema(
+    database_settings: Settings, migration_config: Config
+) -> None:
+    command.check(migration_config)
 
 
-def test_migration_can_be_reapplied(database_settings: Settings) -> None:
-    config = migration_config()
-    command.downgrade(config, "base")
-    command.upgrade(config, "head")
-    command.check(config)
+def test_migration_can_be_reapplied(database_settings: Settings, migration_config: Config) -> None:
+    command.downgrade(migration_config, "base")
+    command.upgrade(migration_config, "head")
+    command.check(migration_config)
 
 
 def test_cache_preserves_unicode_and_nul(connection: Connection) -> None:
